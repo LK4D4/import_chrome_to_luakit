@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import os.path
 import sqlite3
 import time
 
-from collections import namedtuple, deque
+from collections import namedtuple
 from HTMLParser import HTMLParser
 
-LuakitBook = namedtuple('LuakitBook', ['uri', 'title', 'desc', 'tags', 'created', 'modified'])
+Bookmark = namedtuple('LuakitBook', ['uri', 'title', 'desc', 'tags', 'created', 'modified'])
 
 
 class ChromeBookParser(HTMLParser):
@@ -17,26 +16,29 @@ class ChromeBookParser(HTMLParser):
     def __init__(self, chrome_html_bookmarks):
         HTMLParser.__init__(self)
         self.curr_time = time.time()
-        self.stack = deque()
+        self.current_tag = ("", {})
         self.bookmarks = []
         self.current_dir = ""
         self.feed(chrome_html_bookmarks)
 
     def handle_starttag(self, tag, attrs):
         if tag != "dt" and tag != "p":
-            self.stack.append((tag, dict(attrs)))
+            self.current_tag = (tag, dict(attrs))
+
+    def handle_endtag(self, tag):
+        self.current_tag = ("", {})
+        if tag == "dl":
+            self.current_dir = ""
 
     def handle_data(self, data):
-        try:
-            tag, attrs = self.stack.pop()
-        except IndexError:
-            return
+        tag, attrs = self.current_tag
         if tag == "h3" and attrs.get("personal_toolbar_folder") != "true":
-            self.current_dir = data
+            self.current_dir = unicode(data, 'utf8')
         elif tag == "a":
-            self.bookmarks.append(LuakitBook(attrs["href"], unicode(data, 'utf8'), "", self.current_dir, self.curr_time, self.curr_time))
-        elif tag == "dl":
-            self.current_dir = ""
+            self.bookmarks.append(
+                Bookmark(attrs["href"], unicode(data, 'utf8'), "",
+                         self.current_dir, self.curr_time, self.curr_time)
+            )
 
 
 def load_to_luakit(chrome_books, luakit_db):
